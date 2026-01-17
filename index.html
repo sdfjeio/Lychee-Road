@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>蜀道·荔枝道 - 线性文化遗产数据库</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <style>
+        /* --- 全局样式 --- */
+        body { margin: 0; padding: 0; font-family: "Songti SC", "SimSun", serif; display: flex; height: 100vh; overflow: hidden; }
+
+        /* 侧边栏 */
+        .sidebar { width: 360px; background: #fff; box-shadow: 2px 0 10px rgba(0,0,0,0.1); z-index: 1000; display: flex; flex-direction: column; padding: 20px; box-sizing: border-box; border-right: 1px solid #e0e0e0; }
+        .header-box { border-bottom: 3px solid #8B0000; padding-bottom: 15px; margin-bottom: 20px; }
+        .header-box h1 { margin: 0; font-size: 26px; color: #8B0000; letter-spacing: 2px; }
+        .header-box p { margin: 8px 0 0; color: #666; font-size: 14px; font-style: italic;}
+
+        /* 详情区 */
+        #detail-view { flex: 1; overflow-y: auto; }
+        .empty-state { color: #999; text-align: center; margin-top: 60px; }
+        .detail-img { width: 100%; height: 220px; object-fit: cover; border-radius: 4px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .detail-title { font-size: 24px; color: #333; margin: 0 0 10px; font-weight: bold; border-left: 5px solid #8B0000; padding-left: 10px;}
+        .detail-tag { display: inline-block; background: #f0f0f0; color: #555; padding: 4px 10px; border-radius: 20px; font-size: 12px; margin-bottom: 15px; border: 1px solid #ddd;}
+        .detail-desc { font-size: 15px; line-height: 1.8; color: #444; text-align: justify; text-indent: 2em; }
+
+        /* 底部按钮 */
+        .footer-box { margin-top: auto; padding-top: 20px; border-top: 1px solid #eee; display: flex; flex-direction: column; gap: 10px; }
+        .action-btn { background: #8B0000; color: #fff; border: none; padding: 12px; border-radius: 4px; cursor: pointer; font-size: 14px; transition: background 0.3s; width: 100%; text-align: center; }
+        .action-btn.secondary { background: #fff; color: #8B0000; border: 1px solid #8B0000; }
+        .action-btn:hover { opacity: 0.9; }
+        .setting-link { font-size: 12px; color: #999; text-align: center; cursor: pointer; text-decoration: underline; margin-top: 5px; }
+        .setting-link:hover { color: #8B0000; }
+
+        /* 地图区 */
+        #map { flex: 1; height: 100%; z-index: 1; }
+        .control-panel { position: absolute; top: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; align-items: flex-end; }
+        .search-box { background: #fff; padding: 8px; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); display: flex; align-items: center; }
+        .search-input { border: none; outline: none; padding: 5px; font-size: 14px; width: 200px; font-family: "微软雅黑"; }
+        .filter-control { background: rgba(255,255,255,0.95); padding: 8px; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); display: flex; gap: 8px; }
+        .filter-btn { border: 1px solid #ccc; background: #fff; padding: 6px 15px; border-radius: 2px; cursor: pointer; font-size: 13px; color: #555; }
+        .filter-btn.active { background: #8B0000; color: #fff; border-color: #8B0000; }
+
+        /* 弹窗通用 */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 9999; justify-content: center; align-items: center; }
+        .modal-content { background: #fffdf5; width: 800px; max-width: 90%; height: 85%; padding: 40px; border-radius: 4px; position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.3); border: 1px solid #d4c4a8; display: flex; flex-direction: column; }
+        .close-btn { position: absolute; top: 15px; right: 20px; font-size: 24px; cursor: pointer; color: #999; }
+
+        /* 文献库样式 */
+        .lib-header { display: flex; flex-direction: column; margin-bottom: 15px; border-bottom: 2px solid #8B0000; padding-bottom: 10px; }
+        .lib-top-row { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+        .lib-filter-bar { display: flex; gap: 15px; margin-top: 15px; padding-top: 10px; border-top: 1px dashed #ddd; width: 100%; flex-wrap: wrap; }
+        .filter-label { display: flex; align-items: center; cursor: pointer; font-size: 14px; color: #555; user-select: none; margin-bottom: 5px; }
+        .filter-label input { margin-right: 6px; accent-color: #8B0000; width: 16px; height: 16px; cursor: pointer; }
+
+        .lib-list { flex: 1; overflow-y: auto; padding-right: 10px; }
+        .lib-item { background: #fff; padding: 15px; margin-bottom: 10px; border-radius: 4px; border: 1px solid #eee; transition: all 0.2s; position: relative; }
+        .lib-item:hover { border-color: #8B0000; box-shadow: 0 2px 8px rgba(139,0,0,0.1); }
+        .lib-title { font-size: 18px; color: #333; font-weight: bold; margin-bottom: 5px; padding-right: 100px; }
+        .lib-meta { font-size: 12px; color: #999; margin-bottom: 10px; }
+        .lib-content { font-size: 14px; color: #555; line-height: 1.6; white-space: pre-wrap; font-family: "KaiTi", serif; }
+        /* 画廊图片样式 */
+        .lib-gallery-img { width: 100%; max-height: 300px; object-fit: contain; margin-bottom: 10px; border-radius: 4px; background: #f9f9f9; border: 1px solid #eee; }
+
+        /* AI 按钮 */
+        .ai-btn {
+            position: absolute; right: 15px; top: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; border: none; padding: 5px 12px; border-radius: 20px;
+            font-size: 12px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+        .ai-btn:hover { transform: scale(1.05); }
+
+        /* AI 结果框 */
+        #ai-result-box {
+            background: #f0f4f8; padding: 20px; border-radius: 8px; margin-bottom: 20px;
+            border-left: 5px solid #764ba2; display: none; font-size: 14px; line-height: 1.8;
+            max-height: 250px; overflow-y: auto; box-shadow: inset 0 0 10px rgba(0,0,0,0.05);
+        }
+        .loading-spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #ccc; border-top-color: #333; border-radius: 50%; animation: spin 1s linear infinite; margin-right: 5px;}
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #ai-content h3 { color: #764ba2; margin-top: 10px; margin-bottom: 5px; font-size: 16px; }
+        #ai-content p { margin: 5px 0; }
+        #ai-content strong { color: #333; }
+
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="header-box">
+            <h1>蜀道·荔枝道</h1>
+            <p>The Lychee Road Heritage Database</p>
+        </div>
+        <div id="detail-view">
+            <div class="empty-state">
+                <img src="images/icon_default.png" width="48" style="opacity:0.3; filter: grayscale(100%);">
+                <p>点击地图节点<br>查阅历史档案</p>
+            </div>
+        </div>
+        <div class="footer-box">
+            <button class="action-btn secondary" onclick="openLibModal()">📚 查阅文献库</button>
+            <button class="action-btn" onclick="openAboutModal()">📖 关于本项目</button>
+            <span class="setting-link" onclick="setApiKey()">⚙️ 设置 AI Key</span>
+        </div>
+    </div>
+
+    <div id="map">
+        <div class="control-panel">
+            <div class="search-box">
+                <span style="margin-right:5px; cursor:pointer;" onclick="searchAndFly()">🔍</span>
+                <input type="text" class="search-input" id="map-search" placeholder="输入地名按回车..." onkeypress="handleEnter(event)">
+            </div>
+            <div class="filter-control">
+                <button class="filter-btn active" onclick="filterMap('all')">全部</button>
+                <button class="filter-btn" onclick="filterMap('驿站')">驿站</button>
+                <button class="filter-btn" onclick="filterMap('风景')">风景</button>
+                <button class="filter-btn" onclick="filterMap('起点')">地标</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="lib-modal" class="modal-overlay" onclick="closeModal('lib-modal')">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <span class="close-btn" onclick="closeModal('lib-modal')">&times;</span>
+            <div class="lib-header">
+                <div class="lib-top-row">
+                    <h2 style="margin:0; color:#8B0000;">数字文献资源库</h2>
+                    <input type="text" id="lib-search" placeholder="检索资料..." style="padding:8px; width:280px; border:1px solid #ccc; border-radius:4px;" oninput="renderLibList()">
+                </div>
+                <div class="lib-filter-bar">
+                    <span style="font-weight:bold; color:#333; margin-right:10px;">资料分类:</span>
+                    <label class="filter-label"><input type="checkbox" class="lib-type-checkbox" value="诗歌" checked onchange="renderLibList()"> 📜 诗歌文献</label>
+                    <label class="filter-label"><input type="checkbox" class="lib-type-checkbox" value="学术研究" checked onchange="renderLibList()"> 🎓 学术研究</label>
+                    <label class="filter-label"><input type="checkbox" class="lib-type-checkbox" value="文物影像" checked onchange="renderLibList()"> 🖼️ 历史影像</label>
+                </div>
+            </div>
+
+            <div id="ai-result-box">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #ddd; padding-bottom:5px; margin-bottom:10px;">
+                    <strong style="color:#764ba2;">✨ AI 文创设计方案</strong>
+                    <span style="font-size:12px; color:#999; cursor:pointer;" onclick="document.getElementById('ai-result-box').style.display='none'">[关闭]</span>
+                </div>
+                <div id="ai-content"></div>
+            </div>
+
+            <div class="lib-list" id="lib-container">
+                <p style="text-align:center; color:#999;">正在初始化数据库...</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="about-modal" class="modal-overlay" onclick="closeModal('about-modal')">
+        <div class="modal-content" style="height:auto;" onclick="event.stopPropagation()">
+            <span class="close-btn" onclick="closeModal('about-modal')">&times;</span>
+            <h2 style="text-align:center; color:#8B0000;">关于“荔枝道”数字化重现</h2>
+            <div style="font-size:16px; line-height:1.8; color:#444;">
+                <p>本项目旨在利用GIS技术，对唐代荔枝道进行数字化复原。通过整合沿途<b>驿站遗址、自然风貌、非遗文化</b>等时空数据，构建一个可视化的线性文化遗产数据库。</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. 全局配置 ---
+        const literatureFiles = [
+            "literature_poems.csv",
+            "literature_scholar.csv",
+            "gallery.csv" // 🔥 关键：加载图片数据库
+        ];
+        let apiKey = localStorage.getItem('deepseek_key') || '';
+
+        // --- 2. 地图初始化 ---
+        const map = L.map('map', { zoomControl: false }).setView([32.500, 108.000], 7);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap', maxZoom: 18
+        }).addTo(map);
+
+        // --- 3. 数据加载逻辑 ---
+        const icons = {
+            'default': L.icon({ iconUrl: 'images/icon_default.png', iconSize: [32, 32], iconAnchor: [16, 32] }),
+            '驿站': L.icon({ iconUrl: 'images/icon_station.png', iconSize: [32, 32], iconAnchor: [16, 32] }),
+            '自然': L.icon({ iconUrl: 'images/icon_mountain.png', iconSize: [32, 32], iconAnchor: [16, 32] }),
+            '风景': L.icon({ iconUrl: 'images/icon_mountain.png', iconSize: [32, 32], iconAnchor: [16, 32] }),
+            '产地': L.icon({ iconUrl: 'images/icon_lychee.png', iconSize: [32, 32], iconAnchor: [16, 32] }),
+            '起点': L.icon({ iconUrl: 'images/icon_lychee.png', iconSize: [32, 32], iconAnchor: [16, 32] }),
+        };
+
+        let allMarkers = [];
+        // 加载地图点位 (含Polyline连线)
+        Papa.parse("data.csv", {
+            download: true, header: true, skipEmptyLines: true,
+            complete: function(results) {
+                const latlngs = [];
+                results.data.forEach(site => {
+                    if (!site.lat || !site.lng) return;
+                    let markerIcon = icons['default'];
+                    for (let key in icons) if (site.type && site.type.includes(key)) markerIcon = icons[key];
+                    const marker = L.marker([parseFloat(site.lat), parseFloat(site.lng)], { icon: markerIcon });
+                    marker.siteData = site;
+                    marker.on('click', function() { updateSidebar(this.siteData); map.flyTo([site.lat, site.lng], 10); });
+                    marker.bindTooltip(site.name, { direction: 'top', offset: [0, -32] });
+                    marker.addTo(map);
+                    allMarkers.push(marker);
+                    latlngs.push([parseFloat(site.lat), parseFloat(site.lng)]);
+                });
+                if (latlngs.length > 1) {
+                    L.polyline(latlngs, { color: '#8B0000', weight: 3, dashArray: '10, 10' }).addTo(map);
+                }
+            }
+        });
+
+        // 加载多源文献
+        let allLiterature = [];
+        Promise.all(literatureFiles.map(file => new Promise(resolve => {
+            Papa.parse(file, {
+                download: true, header: true, skipEmptyLines: true,
+                complete: res => resolve(res.data),
+                error: () => resolve([])
+            });
+        }))).then(data => {
+            allLiterature = data.flat();
+            console.log("文献加载完成:", allLiterature.length);
+        });
+
+        // --- 4. 交互逻辑 ---
+        function updateSidebar(data) {
+            document.getElementById('detail-view').innerHTML = `
+                <img src="images/${data.id}.jpg" class="detail-img" onerror="this.src='images/icon_default.png'">
+                <h2 class="detail-title">${data.name}</h2>
+                <span class="detail-tag">${data.type}</span>
+                <p class="detail-desc">${data.desc || '暂无详细介绍...'}</p>
+            `;
+        }
+
+        function handleEnter(e) { if (e.key === 'Enter') searchAndFly(); }
+        function searchAndFly() {
+            const input = document.getElementById('map-search').value.trim();
+            if (!input) return;
+            const target = allMarkers.find(m => (m.siteData.name||"").includes(input));
+            if (target) {
+                map.flyTo(target.getLatLng(), 12, { duration: 1.5 });
+                updateSidebar(target.siteData);
+                target.openTooltip();
+            } else { alert("未找到名为 “" + input + "” 的地点"); }
+        }
+
+        function filterMap(cat) {
+            allMarkers.forEach(m => {
+                const t = m.siteData.type || '';
+                if (cat === 'all' || t.includes(cat) || (cat==='风景'&&t.includes('自然')) || (cat==='起点'&&t.includes('地标'))) {
+                    if (!map.hasLayer(m)) m.addTo(map);
+                } else { map.removeLayer(m); }
+            });
+        }
+
+        function openAboutModal() { document.getElementById('about-modal').style.display = 'flex'; }
+        function openLibModal() { document.getElementById('lib-modal').style.display = 'flex'; renderLibList(); }
+        function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+        // --- 5. ✨ AI 功能模块 (智谱AI版) ---
+        function setApiKey() {
+            const key = prompt("请输入 智谱 AI Key (如: 4a2d...)\n请去 bigmodel.cn 申请免费Key", apiKey);
+            if (key) {
+                apiKey = key.trim();
+                localStorage.setItem('deepseek_key', apiKey);
+                alert("✅ Key 已保存！现在可以点击‘设计文创’了。");
+            }
+        }
+
+        async function generateDesign(encodedTitle, encodedContent) {
+            const title = decodeURIComponent(encodedTitle);
+            const content = decodeURIComponent(encodedContent);
+
+            if (!apiKey) {
+                alert("⚠️ 请先点击左下角的‘⚙️ 设置 AI Key’！\n\n请去 bigmodel.cn 申请一个免费的 Key。");
+                return;
+            }
+
+            const resultBox = document.getElementById('ai-result-box');
+            const contentBox = document.getElementById('ai-content');
+            resultBox.style.display = 'block';
+            contentBox.innerHTML = "<span class='loading-spinner'></span> 🤖 AI 设计师正在构思方案 (Powered by GLM)...";
+
+            const prompt = `你是一位顶级文创设计师。请基于以下历史文献或文物图片，设计一款文创产品。
+            【标题】：${title}
+            【描述/内容】：${content.substring(0, 500)}
+            请Strictly按照Markdown格式输出：
+            ### 🏮 产品名称
+            (起一个有文化韵味的名字)
+            ### 💡 设计理念
+            (50字以内，结合荔枝道文化)
+            ### 🎨 视觉设计
+            (描述配色、材质、图案)
+            ### 🖌️ AI绘画提示词
+            (一段英文Prompt，用于生成产品效果图)`;
+
+            try {
+                const response = await fetch("https://open.bigmodel.cn/api/paas/v4/chat/completions", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+                    body: JSON.stringify({
+                        model: "glm-4-flash", // 免费模型
+                        messages: [{role: "user", content: prompt}],
+                        stream: false
+                    })
+                });
+
+                const data = await response.json();
+                if (data.error) throw new Error(`API错误: ${data.error.message}`);
+
+                if (data.choices && data.choices.length > 0) {
+                    contentBox.innerHTML = marked.parse(data.choices[0].message.content);
+                } else {
+                    throw new Error("API 返回空内容");
+                }
+            } catch (error) {
+                console.error(error);
+                contentBox.innerHTML = `<span style="color:red;">❌ 生成失败: ${error.message}</span>`;
+                if(error.message.includes("401") || error.message.includes("invalid signature")) {
+                    alert("Key 无效，请检查智谱 Key 是否正确"); localStorage.removeItem('deepseek_key'); apiKey="";
+                }
+            }
+        }
+
+        // --- 6. 渲染文献列表 ---
+        function renderLibList() {
+            const input = document.getElementById('lib-search').value.toLowerCase();
+            const types = Array.from(document.querySelectorAll('.lib-type-checkbox:checked')).map(b => b.value);
+            const container = document.getElementById('lib-container');
+            container.innerHTML = "";
+
+            const filtered = allLiterature.filter(item => {
+                if (!item.title) return false;
+                if (!types.includes(item.type)) return false;
+                // 同时搜标题、内容和作者
+                return (item.title + (item.author||"") + (item.content||"") + (item.desc||"")).toLowerCase().includes(input);
+            });
+
+            if (filtered.length === 0) { container.innerHTML = "<p style='text-align:center;color:#999'>无结果</p>"; return; }
+
+            filtered.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'lib-item';
+
+                // 样式判断
+                const isScholar = item.type === '学术研究';
+                const isImage = item.type === '文物影像';
+
+                let tagStyle = "background:#f5f5f5; color:#666;";
+                if(isScholar) tagStyle = "background:#e3f2fd; color:#1565c0;";
+                if(isImage) tagStyle = "background:#fce4ec; color:#880e4f;";
+
+                let authorText = (item.author || '').replace('佚名', '').trim();
+
+                // 编码防止报错
+                const safeTitle = encodeURIComponent(item.title);
+                const safeContent = encodeURIComponent(item.content || item.desc || "");
+
+                // 内容显示逻辑：如果是文物，优先显示图片；否则显示文字
+                let contentHtml = `<div class="lib-content">${item.content || item.desc || ''}</div>`;
+                if (isImage && item.filename) {
+                    contentHtml = `<img src="${item.filename}" class="lib-gallery-img" loading="lazy">` + contentHtml;
+                }
+
+                div.innerHTML = `
+                    <div class="lib-title">
+                        ${item.title}
+                        <span style="font-size:14px;font-weight:normal;color:#666;">[${item.era||''}] ${authorText}</span>
+                    </div>
+
+                    <button class="ai-btn" onclick="generateDesign('${safeTitle}', '${safeContent}')">🎨 设计文创</button>
+
+                    <div class="lib-meta">
+                        <span class="lib-tag" style="${tagStyle} padding:2px 8px;border-radius:10px;font-size:12px;">${item.type||'通用'}</span>
+                        <span style="margin-left:10px;color:#999;">来源: ${item.source||'网络'}</span>
+                    </div>
+                    ${contentHtml}
+                `;
+
+                if (isScholar && item.source && item.source.startsWith('http')) {
+                    div.style.cursor = 'pointer';
+                    div.title = "点击查看原文";
+                    div.onclick = (e) => { if(e.target.className !== 'ai-btn') window.open(item.source, '_blank'); };
+                }
+                container.appendChild(div);
+            });
+        }
+
+        // 修复灰块
+        setTimeout(() => map.invalidateSize(), 500);
+    </script>
+</body>
+</html>
