@@ -170,7 +170,7 @@
         const literatureFiles = [
             "literature_poems.csv",
             "literature_scholar.csv",
-            "gallery.csv" // 🔥 关键：加载图片数据库
+            "gallery.csv"
         ];
         let apiKey = localStorage.getItem('deepseek_key') || '';
 
@@ -358,6 +358,12 @@
 
                 let authorText = (item.author || '').replace('佚名', '').trim();
 
+                // 🔥 修改点：如果 item.era 是空的（文物影像通常没有），就不显示 []，避免丑陋的 []
+                let eraDisplay = `[${item.era || '资料'}]`;
+                if (isImage) {
+                    eraDisplay = ""; // 文物影像不显示年代标签
+                }
+
                 // 编码防止报错
                 const safeTitle = encodeURIComponent(item.title);
                 const safeContent = encodeURIComponent(item.content || item.desc || "");
@@ -371,7 +377,7 @@
                 div.innerHTML = `
                     <div class="lib-title">
                         ${item.title}
-                        <span style="font-size:14px;font-weight:normal;color:#666;">[${item.era||''}] ${authorText}</span>
+                        <span style="font-size:14px;font-weight:normal;color:#666;">${eraDisplay} ${authorText}</span>
                     </div>
 
                     <button class="ai-btn" onclick="generateDesign('${safeTitle}', '${safeContent}')">🎨 设计文创</button>
